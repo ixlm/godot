@@ -8,8 +8,14 @@
  *          instead.
  */
 /*
- *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
- *  SPDX-License-Identifier: Apache-2.0
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *
+ *  This file is provided under the Apache License 2.0, or the
+ *  GNU General Public License v2.0 or later.
+ *
+ *  **********
+ *  Apache License 2.0:
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may
  *  not use this file except in compliance with the License.
@@ -23,7 +29,26 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  This file is part of mbed TLS (https://tls.mbed.org)
+ *  **********
+ *
+ *  **********
+ *  GNU General Public License v2.0 or later:
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ *  **********
  *
  */
 #ifndef MBEDTLS_MD4_H
@@ -38,15 +63,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* MBEDTLS_ERR_MD4_HW_ACCEL_FAILED is deprecated and should not be used. */
 #define MBEDTLS_ERR_MD4_HW_ACCEL_FAILED                   -0x002D  /**< MD4 hardware accelerator failed */
-
-#if !defined(MBEDTLS_MD4_ALT)
-// Regular implementation
-//
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#if !defined(MBEDTLS_MD4_ALT)
+// Regular implementation
+//
 
 /**
  * \brief          MD4 context structure
@@ -56,13 +82,17 @@ extern "C" {
  *                 stronger message digests instead.
  *
  */
-typedef struct
+typedef struct mbedtls_md4_context
 {
     uint32_t total[2];          /*!< number of bytes processed  */
     uint32_t state[4];          /*!< intermediate digest state  */
     unsigned char buffer[64];   /*!< data block being processed */
 }
 mbedtls_md4_context;
+
+#else  /* MBEDTLS_MD4_ALT */
+#include "md4_alt.h"
+#endif /* MBEDTLS_MD4_ALT */
 
 /**
  * \brief          Initialize MD4 context
@@ -238,18 +268,6 @@ MBEDTLS_DEPRECATED void mbedtls_md4_process( mbedtls_md4_context *ctx,
 #undef MBEDTLS_DEPRECATED
 #endif /* !MBEDTLS_DEPRECATED_REMOVED */
 
-#ifdef __cplusplus
-}
-#endif
-
-#else  /* MBEDTLS_MD4_ALT */
-#include "md4_alt.h"
-#endif /* MBEDTLS_MD4_ALT */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /**
  * \brief          Output = MD4( input buffer )
  *
@@ -295,6 +313,8 @@ MBEDTLS_DEPRECATED void mbedtls_md4( const unsigned char *input,
 #undef MBEDTLS_DEPRECATED
 #endif /* !MBEDTLS_DEPRECATED_REMOVED */
 
+#if defined(MBEDTLS_SELF_TEST)
+
 /**
  * \brief          Checkup routine
  *
@@ -306,6 +326,8 @@ MBEDTLS_DEPRECATED void mbedtls_md4( const unsigned char *input,
  *
  */
 int mbedtls_md4_self_test( int verbose );
+
+#endif /* MBEDTLS_SELF_TEST */
 
 #ifdef __cplusplus
 }

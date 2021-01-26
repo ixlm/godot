@@ -4,8 +4,14 @@
  * \brief Portable interface to timeouts and to the CPU cycle counter
  */
 /*
- *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
- *  SPDX-License-Identifier: Apache-2.0
+ *  Copyright The Mbed TLS Contributors
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *
+ *  This file is provided under the Apache License 2.0, or the
+ *  GNU General Public License v2.0 or later.
+ *
+ *  **********
+ *  Apache License 2.0:
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may
  *  not use this file except in compliance with the License.
@@ -19,7 +25,26 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  This file is part of mbed TLS (https://tls.mbed.org)
+ *  **********
+ *
+ *  **********
+ *  GNU General Public License v2.0 or later:
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ *  **********
  */
 #ifndef MBEDTLS_TIMING_H
 #define MBEDTLS_TIMING_H
@@ -30,15 +55,15 @@
 #include MBEDTLS_CONFIG_FILE
 #endif
 
-#if !defined(MBEDTLS_TIMING_ALT)
-// Regular implementation
-//
-
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#if !defined(MBEDTLS_TIMING_ALT)
+// Regular implementation
+//
 
 /**
  * \brief          timer structure
@@ -51,12 +76,16 @@ struct mbedtls_timing_hr_time
 /**
  * \brief          Context for mbedtls_timing_set/get_delay()
  */
-typedef struct
+typedef struct mbedtls_timing_delay_context
 {
     struct mbedtls_timing_hr_time   timer;
     uint32_t                        int_ms;
     uint32_t                        fin_ms;
 } mbedtls_timing_delay_context;
+
+#else  /* MBEDTLS_TIMING_ALT */
+#include "timing_alt.h"
+#endif /* MBEDTLS_TIMING_ALT */
 
 extern volatile int mbedtls_timing_alarmed;
 
@@ -132,18 +161,6 @@ void mbedtls_timing_set_delay( void *data, uint32_t int_ms, uint32_t fin_ms );
  *                  2 if the final delay is passed.
  */
 int mbedtls_timing_get_delay( void *data );
-
-#ifdef __cplusplus
-}
-#endif
-
-#else  /* MBEDTLS_TIMING_ALT */
-#include "timing_alt.h"
-#endif /* MBEDTLS_TIMING_ALT */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #if defined(MBEDTLS_SELF_TEST)
 /**

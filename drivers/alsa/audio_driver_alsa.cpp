@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2018 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2018 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2021 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2021 Godot Engine contributors (cf. AUTHORS.md).   */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -32,13 +32,13 @@
 
 #ifdef ALSA_ENABLED
 
-#include "os/os.h"
-#include "project_settings.h"
+#include "core/config/project_settings.h"
+#include "core/os/os.h"
 
 #include <errno.h>
 
 Error AudioDriverALSA::init_device() {
-	mix_rate = GLOBAL_DEF("audio/mix_rate", DEFAULT_MIX_RATE);
+	mix_rate = GLOBAL_GET("audio/mix_rate");
 	speaker_mode = SPEAKER_MODE_STEREO;
 	channels = 2;
 
@@ -58,7 +58,10 @@ Error AudioDriverALSA::init_device() {
 #define CHECK_FAIL(m_cond)                                       \
 	if (m_cond) {                                                \
 		fprintf(stderr, "ALSA ERR: %s\n", snd_strerror(status)); \
-		snd_pcm_close(pcm_handle);                               \
+		if (pcm_handle) {                                        \
+			snd_pcm_close(pcm_handle);                           \
+			pcm_handle = nullptr;                                \
+		}                                                        \
 		ERR_FAIL_COND_V(m_cond, ERR_CANT_OPEN);                  \
 	}
 
@@ -95,13 +98,13 @@ Error AudioDriverALSA::init_device() {
 	status = snd_pcm_hw_params_set_channels(pcm_handle, hwparams, 2);
 	CHECK_FAIL(status < 0);
 
-	status = snd_pcm_hw_params_set_rate_near(pcm_handle, hwparams, &mix_rate, NULL);
+	status = snd_pcm_hw_params_set_rate_near(pcm_handle, hwparams, &mix_rate, nullptr);
 	CHECK_FAIL(status < 0);
 
 	// In ALSA the period size seems to be the one that will determine the actual latency
 	// Ref: https://www.alsa-project.org/main/index.php/FramesPeriods
 	unsigned int periods = 2;
-	int latency = GLOBAL_DEF("audio/output_latency", DEFAULT_OUTPUT_LATENCY);
+	int latency = GLOBAL_GET("audio/output_latency");
 	buffer_frames = closest_power_of_2(latency * mix_rate / 1000);
 	buffer_size = buffer_frames * periods;
 	period_size = buffer_frames;
@@ -110,14 +113,12 @@ Error AudioDriverALSA::init_device() {
 	status = snd_pcm_hw_params_set_buffer_size_near(pcm_handle, hwparams, &buffer_size);
 	CHECK_FAIL(status < 0);
 
-	status = snd_pcm_hw_params_set_period_size_near(pcm_handle, hwparams, &period_size, NULL);
+	status = snd_pcm_hw_params_set_period_size_near(pcm_handle, hwparams, &period_size, nullptr);
 	CHECK_FAIL(status < 0);
 
-	if (OS::get_singleton()->is_stdout_verbose()) {
-		print_line("audio buffer frames: " + itos(period_size) + " calculated latency: " + itos(period_size * 1000 / mix_rate) + "ms");
-	}
+	print_verbose("Audio buffer frames: " + itos(period_size) + " calculated latency: " + itos(period_size * 1000 / mix_rate) + "ms");
 
-	status = snd_pcm_hw_params_set_periods_near(pcm_handle, hwparams, &periods, NULL);
+	status = snd_pcm_hw_params_set_periods_near(pcm_handle, hwparams, &periods, nullptr);
 	CHECK_FAIL(status < 0);
 
 	status = snd_pcm_hw_params(pcm_handle, hwparams);
@@ -142,80 +143,69 @@ Error AudioDriverALSA::init_device() {
 	samples_in.resize(period_size * channels);
 	samples_out.resize(period_size * channels);
 
-	snd_pcm_nonblock(pcm_handle, 0);
-
 	return OK;
 }
 
 Error AudioDriverALSA::init() {
-
 	active = false;
 	thread_exited = false;
 	exit_thread = false;
-	pcm_open = false;
 
 	Error err = init_device();
 	if (err == OK) {
-		mutex = Mutex::create();
 		thread = Thread::create(AudioDriverALSA::thread_func, this);
 	}
 
 	return err;
-};
+}
 
 void AudioDriverALSA::thread_func(void *p_udata) {
-
 	AudioDriverALSA *ad = (AudioDriverALSA *)p_udata;
 
 	while (!ad->exit_thread) {
-		if (!ad->active) {
-			for (unsigned int i = 0; i < ad->period_size * ad->channels; i++) {
-				ad->samples_out[i] = 0;
-			};
-		} else {
-			ad->lock();
+		ad->lock();
+		ad->start_counting_ticks();
 
+		if (!ad->active) {
+			for (uint64_t i = 0; i < ad->period_size * ad->channels; i++) {
+				ad->samples_out.write[i] = 0;
+			}
+
+		} else {
 			ad->audio_server_process(ad->period_size, ad->samples_in.ptrw());
 
-			ad->unlock();
-
-			for (unsigned int i = 0; i < ad->period_size * ad->channels; i++) {
-				ad->samples_out[i] = ad->samples_in[i] >> 16;
+			for (uint64_t i = 0; i < ad->period_size * ad->channels; i++) {
+				ad->samples_out.write[i] = ad->samples_in[i] >> 16;
 			}
-		};
+		}
 
 		int todo = ad->period_size;
 		int total = 0;
 
-		while (todo) {
-			if (ad->exit_thread)
-				break;
-			uint8_t *src = (uint8_t *)ad->samples_out.ptr();
+		while (todo && !ad->exit_thread) {
+			int16_t *src = (int16_t *)ad->samples_out.ptr();
 			int wrote = snd_pcm_writei(ad->pcm_handle, (void *)(src + (total * ad->channels)), todo);
 
-			if (wrote < 0) {
-				if (ad->exit_thread)
-					break;
+			if (wrote > 0) {
+				total += wrote;
+				todo -= wrote;
+			} else if (wrote == -EAGAIN) {
+				ad->stop_counting_ticks();
+				ad->unlock();
 
-				if (wrote == -EAGAIN) {
-					//can't write yet (though this is blocking..)
-					usleep(1000);
-					continue;
-				}
+				OS::get_singleton()->delay_usec(1000);
+
+				ad->lock();
+				ad->start_counting_ticks();
+			} else {
 				wrote = snd_pcm_recover(ad->pcm_handle, wrote, 0);
 				if (wrote < 0) {
-					//absolute fail
-					fprintf(stderr, "ALSA failed and can't recover: %s\n", snd_strerror(wrote));
+					ERR_PRINT("ALSA: Failed and can't recover: " + String(snd_strerror(wrote)));
 					ad->active = false;
 					ad->exit_thread = true;
-					break;
 				}
-				continue;
-			};
-
-			total += wrote;
-			todo -= wrote;
-		};
+			}
+		}
 
 		// User selected a new device, finish the current one so we'll init the new device
 		if (ad->device_name != ad->new_device) {
@@ -232,46 +222,45 @@ void AudioDriverALSA::thread_func(void *p_udata) {
 				if (err != OK) {
 					ad->active = false;
 					ad->exit_thread = true;
-					break;
 				}
 			}
 		}
-	};
+
+		ad->stop_counting_ticks();
+		ad->unlock();
+	}
 
 	ad->thread_exited = true;
-};
+}
 
 void AudioDriverALSA::start() {
-
 	active = true;
-};
+}
 
 int AudioDriverALSA::get_mix_rate() const {
-
 	return mix_rate;
-};
+}
 
 AudioDriver::SpeakerMode AudioDriverALSA::get_speaker_mode() const {
-
 	return speaker_mode;
-};
+}
 
 Array AudioDriverALSA::get_device_list() {
-
 	Array list;
 
 	list.push_back("Default");
 
 	void **hints;
 
-	if (snd_device_name_hint(-1, "pcm", &hints) < 0)
+	if (snd_device_name_hint(-1, "pcm", &hints) < 0) {
 		return list;
+	}
 
-	for (void **n = hints; *n != NULL; n++) {
+	for (void **n = hints; *n != nullptr; n++) {
 		char *name = snd_device_name_get_hint(*n, "NAME");
 		char *desc = snd_device_name_get_hint(*n, "DESC");
 
-		if (name != NULL && !strncmp(name, "plughw", 6)) {
+		if (name != nullptr && !strncmp(name, "plughw", 6)) {
 			if (desc) {
 				list.push_back(String(name) + ";" + String(desc));
 			} else {
@@ -279,10 +268,12 @@ Array AudioDriverALSA::get_device_list() {
 			}
 		}
 
-		if (desc != NULL)
+		if (desc != nullptr) {
 			free(desc);
-		if (name != NULL)
+		}
+		if (name != nullptr) {
 			free(name);
+		}
 	}
 	snd_device_name_free_hint(hints);
 
@@ -290,67 +281,46 @@ Array AudioDriverALSA::get_device_list() {
 }
 
 String AudioDriverALSA::get_device() {
-
 	return device_name;
 }
 
 void AudioDriverALSA::set_device(String device) {
-
+	lock();
 	new_device = device;
+	unlock();
 }
 
 void AudioDriverALSA::lock() {
-
-	if (!thread || !mutex)
+	if (!thread) {
 		return;
-	mutex->lock();
-};
+	}
+	mutex.lock();
+}
 
 void AudioDriverALSA::unlock() {
-
-	if (!thread || !mutex)
+	if (!thread) {
 		return;
-	mutex->unlock();
-};
+	}
+	mutex.unlock();
+}
 
 void AudioDriverALSA::finish_device() {
-
-	if (pcm_open) {
+	if (pcm_handle) {
 		snd_pcm_close(pcm_handle);
-		pcm_open = NULL;
+		pcm_handle = nullptr;
 	}
 }
 
 void AudioDriverALSA::finish() {
+	if (thread) {
+		exit_thread = true;
+		Thread::wait_to_finish(thread);
 
-	if (!thread)
-		return;
-
-	exit_thread = true;
-	Thread::wait_to_finish(thread);
+		memdelete(thread);
+		thread = nullptr;
+	}
 
 	finish_device();
+}
 
-	memdelete(thread);
-	if (mutex) {
-		memdelete(mutex);
-		mutex = NULL;
-	}
-	thread = NULL;
-};
-
-AudioDriverALSA::AudioDriverALSA() {
-
-	mutex = NULL;
-	thread = NULL;
-	pcm_handle = NULL;
-
-	device_name = "Default";
-	new_device = "Default";
-};
-
-AudioDriverALSA::~AudioDriverALSA(){
-
-};
-
-#endif
+#endif // ALSA_ENABLED

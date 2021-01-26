@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2018 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2018 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2021 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2021 Godot Engine contributors (cf. AUTHORS.md).   */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -36,8 +36,7 @@
 #include "servers/audio_server.h"
 
 class AudioStreamPlayer2D : public Node2D {
-
-	GDCLASS(AudioStreamPlayer2D, Node2D)
+	GDCLASS(AudioStreamPlayer2D, Node2D);
 
 private:
 	enum {
@@ -47,7 +46,6 @@ private:
 	};
 
 	struct Output {
-
 		AudioFrame vol;
 		int bus_index;
 		Viewport *viewport; //pointer only used for reference to previous mix
@@ -72,6 +70,9 @@ private:
 	float volume_db;
 	float pitch_scale;
 	bool autoplay;
+	bool stream_paused;
+	bool stream_paused_fade_in;
+	bool stream_paused_fade_out;
 	StringName bus;
 
 	void _mix_audio();
@@ -88,7 +89,7 @@ private:
 	float attenuation;
 
 protected:
-	void _validate_property(PropertyInfo &property) const;
+	void _validate_property(PropertyInfo &property) const override;
 	void _notification(int p_what);
 	static void _bind_methods();
 
@@ -122,6 +123,11 @@ public:
 
 	void set_area_mask(uint32_t p_mask);
 	uint32_t get_area_mask() const;
+
+	void set_stream_paused(bool p_pause);
+	bool get_stream_paused() const;
+
+	Ref<AudioStreamPlayback> get_stream_playback();
 
 	AudioStreamPlayer2D();
 	~AudioStreamPlayer2D();

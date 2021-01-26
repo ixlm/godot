@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2018 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2018 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2021 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2021 Godot Engine contributors (cf. AUTHORS.md).   */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -33,27 +33,30 @@
 
 #include "csg_shape.h"
 #include "editor/editor_plugin.h"
-#include "editor/spatial_editor_gizmos.h"
+#include "editor/node_3d_editor_gizmos.h"
 
-class CSGShapeSpatialGizmo : public EditorSpatialGizmo {
-
-	GDCLASS(CSGShapeSpatialGizmo, EditorSpatialGizmo);
-
-	CSGShape *cs;
+class CSGShape3DGizmoPlugin : public EditorNode3DGizmoPlugin {
+	GDCLASS(CSGShape3DGizmoPlugin, EditorNode3DGizmoPlugin);
 
 public:
-	virtual String get_handle_name(int p_idx) const;
-	virtual Variant get_handle_value(int p_idx) const;
-	virtual void set_handle(int p_idx, Camera *p_camera, const Point2 &p_point);
-	virtual void commit_handle(int p_idx, const Variant &p_restore, bool p_cancel = false);
-	void redraw();
-	CSGShapeSpatialGizmo(CSGShape *p_cs = NULL);
+	bool has_gizmo(Node3D *p_spatial) override;
+	String get_gizmo_name() const override;
+	int get_priority() const override;
+	bool is_selectable_when_hidden() const override;
+	void redraw(EditorNode3DGizmo *p_gizmo) override;
+
+	String get_handle_name(const EditorNode3DGizmo *p_gizmo, int p_idx) const override;
+	Variant get_handle_value(EditorNode3DGizmo *p_gizmo, int p_idx) const override;
+	void set_handle(EditorNode3DGizmo *p_gizmo, int p_idx, Camera3D *p_camera, const Point2 &p_point) override;
+	void commit_handle(EditorNode3DGizmo *p_gizmo, int p_idx, const Variant &p_restore, bool p_cancel) override;
+
+	CSGShape3DGizmoPlugin();
 };
 
 class EditorPluginCSG : public EditorPlugin {
-	GDCLASS(EditorPluginCSG, EditorPlugin)
+	GDCLASS(EditorPluginCSG, EditorPlugin);
+
 public:
-	virtual Ref<SpatialEditorGizmo> create_spatial_gizmo(Spatial *p_spatial);
 	EditorPluginCSG(EditorNode *p_editor);
 };
 
